@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -92,9 +93,10 @@ public class LessIOSecurityManager extends SecurityManager {
                                                             java.lang.ClassLoader.class,
                                                             java.net.URLClassLoader.class);
 
-  private static final int lowestEphemeralPort = Integer.getInteger("ness.testing.low-ephemeral-port", Integer.getInteger("kawala.testing.low-ephemeral-port", 32768));
-  private static final int highestEphemeralPort = Integer.getInteger("ness.testing.high-ephemeral-port", Integer.getInteger("kawala.testing.high-ephemeral-port", 65535));
-  private static final Set<Integer> allocatedEphemeralPorts = Sets.newSetFromMap(Maps.<Integer, Boolean>newConcurrentMap());
+  private final int lowestEphemeralPort = Integer.getInteger("ness.testing.low-ephemeral-port", Integer.getInteger("kawala.testing.low-ephemeral-port", 32768));
+  private final int highestEphemeralPort = Integer.getInteger("ness.testing.high-ephemeral-port", Integer.getInteger("kawala.testing.high-ephemeral-port", 65535));
+  private final Set<Integer> allocatedEphemeralPorts = Sets.newSetFromMap(Maps.<Integer, Boolean>newConcurrentMap());
+  private final boolean reporting = Boolean.getBoolean("ness.testing.security-manager.reporting");
 
   /**
    * Any subclasses that override this method <b>must</b> include any Class<?>
@@ -115,19 +117,50 @@ public class LessIOSecurityManager extends SecurityManager {
     return whitelistedClasses;
   }
 
-  private final boolean reporting;
-
-  public LessIOSecurityManager() {
-    this(true);
-  }
-
-  protected LessIOSecurityManager(boolean reporting) {
-    this.reporting = reporting;
-  }
-
   private static ImmutableList<String> getClassPath() {
       return ImmutableList.copyOf(System.getProperty("java.class.path").split(PATH_SEPARATOR));
   }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  private static boolean hasAnnotations(final Class<?> clazz, final Class<?> ... annotations)
+  {
+      Preconditions.checkArgument(clazz != null, "clazz argument can not be null!");
+      Preconditions.checkArgument(annotations != null && annotations.length > 0, "at least one annotation must be present");
+
+      // Check class and parent classes.
+      Class<?> currentClazz = clazz;
+      while (currentClazz != null) {
+          for (Class annotation : annotations) {
+              if (currentClazz.getAnnotation(annotation) != null) {
+                  return true;
+              }
+          }
+          currentClazz = currentClazz.getSuperclass();
+      }
+
+      return false;
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  private static <T> T findAnnotation(final Class<?> clazz, final Class<T> annotation)
+  {
+      Preconditions.checkArgument(clazz != null, "clazz argument can not be null!");
+      Preconditions.checkArgument(annotation != null, "annotation must be present");
+
+      // Check class and parent classes.
+      Class<?> currentClazz = clazz;
+      while (currentClazz != null) {
+          final T a = (T) currentClazz.getAnnotation((Class) annotation);
+          if (a != null) {
+              return a;
+          }
+          currentClazz = currentClazz.getSuperclass();
+      }
+
+      return null;
+
+  }
+
 
   // {{ Allowed only via {@link @AllowNetworkAccess}, {@link @AllowDNSResolution}, or {@link @AllowNetworkMulticast})
   protected void checkDNSResolution(Class<?>[] classContext) throws CantDoItException {
@@ -135,13 +168,7 @@ public class LessIOSecurityManager extends SecurityManager {
       checkClassContextPermissions(classContext, new Predicate<Class<?>>() {
         @Override
         public boolean apply(Class<?> input) {
-          if ((input.getAnnotation(AllowDNSResolution.class) != null)
-              || (input.getAnnotation(AllowNetworkMulticast.class) != null)
-              || (input.getAnnotation(AllowNetworkListen.class) != null)
-              || (input.getAnnotation(AllowNetworkAccess.class) != null)) {
-            return true;
-          }
-          return false;
+            return hasAnnotations(input, AllowDNSResolution.class, AllowNetworkMulticast.class, AllowNetworkListen.class, AllowNetworkAccess.class);
         }
 
         @Override
@@ -165,10 +192,10 @@ public class LessIOSecurityManager extends SecurityManager {
         @Override
         public boolean apply(Class<?> input) {
           String [] endpoints = null;
-          if (input.getAnnotation(AllowNetworkAccess.class) != null) {
-            endpoints = input.getAnnotation(AllowNetworkAccess.class).endpoints();
+          final AllowNetworkAccess access = findAnnotation(input, AllowNetworkAccess.class);
+          if (access != null) {
+              endpoints = access.endpoints();
           }
-
           if (endpoints == null) {
             return false;
           }
@@ -218,10 +245,10 @@ public class LessIOSecurityManager extends SecurityManager {
         @Override
         public boolean apply(Class<?> input) {
           int [] ports = null;
-          if (input.getAnnotation(AllowNetworkListen.class) != null) {
-            ports = input.getAnnotation(AllowNetworkListen.class).ports();
+          final AllowNetworkListen a = findAnnotation(input, AllowNetworkListen.class);
+          if (a != null) {
+              ports = a.ports();
           }
-
           if (ports == null) {
             return false;
         }
@@ -251,11 +278,7 @@ public class LessIOSecurityManager extends SecurityManager {
       checkClassContextPermissions(classContext, new Predicate<Class<?>>() {
         @Override
         public boolean apply(Class<?> input) {
-          if (input.getAnnotation(AllowNetworkMulticast.class) != null) {
-            return true;
-          } else {
-            return false;
-          }
+            return hasAnnotations(input, AllowNetworkMulticast.class);
         }
 
         @Override
@@ -304,10 +327,11 @@ public class LessIOSecurityManager extends SecurityManager {
           @Override
           public boolean apply(Class<?> input) {
             String [] paths = null;
-            if (input.getAnnotation(AllowLocalFileAccess.class) != null) {
-              paths = input.getAnnotation(AllowLocalFileAccess.class).paths();
-            }
+            final AllowLocalFileAccess a = findAnnotation(input, AllowLocalFileAccess.class);
 
+            if (a != null) {
+                paths = a.paths();
+            }
             if (paths == null) {
               return false;
             }
@@ -344,16 +368,17 @@ public class LessIOSecurityManager extends SecurityManager {
       checkClassContextPermissions(classContext, new Predicate<Class<?>>() {
         @Override
         public boolean apply(Class<?> input) {
-          if (input.getAnnotation(AllowExternalProcess.class) != null
-              || input.getAnnotation(AllowNetworkAccess.class) != null) {
-            // AllowExternalProcess and AllowNetworkAccess imply @AllowLocalFileAccess({"%FD%"}),
-            // since it's required.
-            return true;
+          // AllowExternalProcess and AllowNetworkAccess imply @AllowLocalFileAccess({"%FD%"}),
+          // since it's required.
+          if (hasAnnotations(input, AllowExternalProcess.class, AllowNetworkAccess.class)) {
+              return true;
           }
 
           String [] paths = null;
-          if (input.getAnnotation(AllowLocalFileAccess.class) != null) {
-            paths = input.getAnnotation(AllowLocalFileAccess.class).paths();
+          final AllowLocalFileAccess a = findAnnotation(input, AllowLocalFileAccess.class);
+
+          if (a != null) {
+              paths = a.paths();
           }
 
           if (paths == null) {
@@ -417,12 +442,7 @@ public class LessIOSecurityManager extends SecurityManager {
       checkClassContextPermissions(classContext, new Predicate<Class<?>>() {
         @Override
         public boolean apply(Class<?> input) {
-
-            if (input.getAnnotation(AllowExternalProcess.class) != null) {
-            return true;
-          } else {
-            return false;
-          }
+            return hasAnnotations(input, AllowExternalProcess.class);
         }
 
         @Override
