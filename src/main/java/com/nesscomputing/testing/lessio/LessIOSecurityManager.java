@@ -77,7 +77,6 @@ import com.nesscomputing.logging.Log;
  *      {@link AllowLocalFileAccess}, {@link AllowNetworkAccess}, and
  *      {@link AllowNetworkMulticast}
  */
-@SuppressWarnings("deprecation")
 public class LessIOSecurityManager extends SecurityManager {
 
   private static final Log LOG = Log.findLog();
@@ -136,10 +135,10 @@ public class LessIOSecurityManager extends SecurityManager {
       checkClassContextPermissions(classContext, new Predicate<Class<?>>() {
         @Override
         public boolean apply(Class<?> input) {
-          if ((input.getAnnotation(AllowDNSResolution.class) != null) || (input.getAnnotation(com.kaching.platform.testing.AllowDNSResolution.class) != null)
-              || (input.getAnnotation(AllowNetworkMulticast.class) != null) || (input.getAnnotation(com.kaching.platform.testing.AllowNetworkMulticast.class) != null)
-              || (input.getAnnotation(AllowNetworkListen.class) != null)  || (input.getAnnotation(com.kaching.platform.testing.AllowNetworkListen.class) != null)
-              || (input.getAnnotation(AllowNetworkAccess.class) != null)  || (input.getAnnotation(com.kaching.platform.testing.AllowNetworkAccess.class) != null)) {
+          if ((input.getAnnotation(AllowDNSResolution.class) != null)
+              || (input.getAnnotation(AllowNetworkMulticast.class) != null)
+              || (input.getAnnotation(AllowNetworkListen.class) != null)
+              || (input.getAnnotation(AllowNetworkAccess.class) != null)) {
             return true;
           }
           return false;
@@ -168,9 +167,6 @@ public class LessIOSecurityManager extends SecurityManager {
           String [] endpoints = null;
           if (input.getAnnotation(AllowNetworkAccess.class) != null) {
             endpoints = input.getAnnotation(AllowNetworkAccess.class).endpoints();
-          }
-          else if (input.getAnnotation(com.kaching.platform.testing.AllowNetworkAccess.class) != null) {
-            endpoints = input.getAnnotation(com.kaching.platform.testing.AllowNetworkAccess.class).endpoints();
           }
 
           if (endpoints == null) {
@@ -225,9 +221,6 @@ public class LessIOSecurityManager extends SecurityManager {
           if (input.getAnnotation(AllowNetworkListen.class) != null) {
             ports = input.getAnnotation(AllowNetworkListen.class).ports();
           }
-          else if (input.getAnnotation(com.kaching.platform.testing.AllowNetworkListen.class) != null) {
-              ports = input.getAnnotation(com.kaching.platform.testing.AllowNetworkListen.class).ports();
-          }
 
           if (ports == null) {
             return false;
@@ -258,7 +251,7 @@ public class LessIOSecurityManager extends SecurityManager {
       checkClassContextPermissions(classContext, new Predicate<Class<?>>() {
         @Override
         public boolean apply(Class<?> input) {
-          if (input.getAnnotation(AllowNetworkMulticast.class) != null || input.getAnnotation(com.kaching.platform.testing.AllowNetworkMulticast.class) != null) {
+          if (input.getAnnotation(AllowNetworkMulticast.class) != null) {
             return true;
           } else {
             return false;
@@ -314,9 +307,6 @@ public class LessIOSecurityManager extends SecurityManager {
             if (input.getAnnotation(AllowLocalFileAccess.class) != null) {
               paths = input.getAnnotation(AllowLocalFileAccess.class).paths();
             }
-            else if (input.getAnnotation(com.kaching.platform.testing.AllowLocalFileAccess.class) != null) {
-              paths = input.getAnnotation(com.kaching.platform.testing.AllowLocalFileAccess.class).paths();
-            }
 
             if (paths == null) {
               return false;
@@ -354,8 +344,8 @@ public class LessIOSecurityManager extends SecurityManager {
       checkClassContextPermissions(classContext, new Predicate<Class<?>>() {
         @Override
         public boolean apply(Class<?> input) {
-          if (input.getAnnotation(AllowExternalProcess.class) != null || input.getAnnotation(com.kaching.platform.testing.AllowExternalProcess.class) != null
-              || input.getAnnotation(AllowNetworkAccess.class) != null || input.getAnnotation(com.kaching.platform.testing.AllowNetworkAccess.class) != null) {
+          if (input.getAnnotation(AllowExternalProcess.class) != null
+              || input.getAnnotation(AllowNetworkAccess.class) != null) {
             // AllowExternalProcess and AllowNetworkAccess imply @AllowLocalFileAccess({"%FD%"}),
             // since it's required.
             return true;
@@ -364,9 +354,6 @@ public class LessIOSecurityManager extends SecurityManager {
           String [] paths = null;
           if (input.getAnnotation(AllowLocalFileAccess.class) != null) {
             paths = input.getAnnotation(AllowLocalFileAccess.class).paths();
-          }
-          else if (input.getAnnotation(com.kaching.platform.testing.AllowLocalFileAccess.class) != null) {
-            paths = input.getAnnotation(com.kaching.platform.testing.AllowLocalFileAccess.class).paths();
           }
 
           if (paths == null) {
@@ -431,7 +418,7 @@ public class LessIOSecurityManager extends SecurityManager {
         @Override
         public boolean apply(Class<?> input) {
 
-            if (input.getAnnotation(AllowExternalProcess.class) != null || input.getAnnotation(com.kaching.platform.testing.AllowExternalProcess.class) != null) {
+            if (input.getAnnotation(AllowExternalProcess.class) != null) {
             return true;
           } else {
             return false;
