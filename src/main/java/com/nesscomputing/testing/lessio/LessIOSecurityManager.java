@@ -457,33 +457,45 @@ public class LessIOSecurityManager extends SecurityManager {
   // {{ Closely Monitored
   @Override
   public void checkExit(int status) {
-    LOG.info("%s: exit(%d)", currentTest(getClassContext()), status);
+      if (this.reporting) {
+          LOG.debug("%s: exit(%d)", currentTest(getClassContext()), status);
+      }
   }
 
   @Override
   public void checkLink(String lib) {
-    LOG.info("%s: System.loadLibrary(\"%s\")", currentTest(getClassContext()), lib);
+      if (this.reporting) {
+          LOG.debug("%s: System.loadLibrary(\"%s\")", currentTest(getClassContext()), lib);
+      }
   }
 
   @Override
   public void checkAwtEventQueueAccess() {
-    LOG.info("%s: AwtEventQueue Access", currentTest(getClassContext()));
+      if (this.reporting) {
+          LOG.debug("%s: AwtEventQueue Access", currentTest(getClassContext()));
+      }
   }
 
   @Override
   public void checkPrintJobAccess() {
-    LOG.info("%s: PrintJob Access", currentTest(getClassContext()));
+      if (this.reporting) {
+          LOG.debug("%s: PrintJob Access", currentTest(getClassContext()));
+      }
   }
 
   @Override
   public void checkSystemClipboardAccess() {
-    LOG.info("%s: SystemClipboard Access", currentTest(getClassContext()));
+      if (this.reporting) {
+          LOG.debug("%s: SystemClipboard Access", currentTest(getClassContext()));
+      }
   }
 
   @Override
   public boolean checkTopLevelWindow(Object window) {
-    LOG.info("%s: checkTopLevelWindow aka AWTPermission(\"showWindowWithoutWarningBanner\")", currentTest(getClassContext()));
-    return true;
+      if (this.reporting) {
+          LOG.debug("%s: checkTopLevelWindow aka AWTPermission(\"showWindowWithoutWarningBanner\")", currentTest(getClassContext()));
+      }
+      return true;
   }
 
   // }}
