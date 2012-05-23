@@ -21,9 +21,18 @@ import static java.lang.Thread.currentThread;
 import java.io.FileDescriptor;
 import java.net.InetAddress;
 import java.security.Permission;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+
+import org.junit.internal.runners.statements.InvokeMethod;
+import org.junit.internal.runners.statements.RunAfters;
+import org.junit.internal.runners.statements.RunBefores;
+import org.junit.rules.TestRule;
+import org.junit.runners.ParentRunner;
+import org.junit.runners.model.FrameworkMethod;
+import org.junit.runners.model.Statement;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
@@ -89,9 +98,24 @@ public class LessIOSecurityManager extends SecurityManager {
           new AtomicReference<List<String>>(getClassPath());
 
   protected static final String TMP_DIR = System.getProperty("java.io.tmpdir").replaceFirst("/$", "");
-  private static final Set<Class<?>> whitelistedClasses = ImmutableSet.<Class<?>>of(
-                                                            java.lang.ClassLoader.class,
-                                                            java.net.URLClassLoader.class);
+
+  private static final Set<Class<?>> whitelistedClasses  = ImmutableSet.<Class<?>>of(java.lang.ClassLoader.class,
+                                                                                     java.net.URLClassLoader.class);
+
+  private static final Set<Class<?>> TESTRUNNER_CLASSES;
+
+  static {
+      final Set<Class<?>> testrunnerClasses = Sets.newIdentityHashSet();
+      testrunnerClasses.add(ParentRunner.class);
+      testrunnerClasses.add(RunAfters.class);
+      testrunnerClasses.add(RunBefores.class);
+      testrunnerClasses.add(FrameworkMethod.class);
+      testrunnerClasses.add(InvokeMethod.class);
+      testrunnerClasses.add(TestRule.class);
+      testrunnerClasses.add(Statement.class);
+
+      TESTRUNNER_CLASSES = Collections.unmodifiableSet(testrunnerClasses);
+  }
 
   private final int lowestEphemeralPort = Integer.getInteger("ness.testing.low-ephemeral-port", Integer.getInteger("kawala.testing.low-ephemeral-port", 32768));
   private final int highestEphemeralPort = Integer.getInteger("ness.testing.high-ephemeral-port", Integer.getInteger("kawala.testing.high-ephemeral-port", 65535));
@@ -130,9 +154,17 @@ public class LessIOSecurityManager extends SecurityManager {
       // Check class and parent classes.
       Class<?> currentClazz = clazz;
       while (currentClazz != null) {
+          Class<?> enclosingClass = currentClazz.getEnclosingClass();
+
           for (Class annotation : annotations) {
               if (currentClazz.getAnnotation(annotation) != null) {
                   return true;
+              }
+              while (enclosingClass != null) {
+                  if (enclosingClass.getAnnotation(annotation) != null) {
+                      return true;
+                  }
+                  enclosingClass = enclosingClass.getEnclosingClass();
               }
           }
           currentClazz = currentClazz.getSuperclass();
@@ -150,15 +182,47 @@ public class LessIOSecurityManager extends SecurityManager {
       // Check class and parent classes.
       Class<?> currentClazz = clazz;
       while (currentClazz != null) {
-          final T a = (T) currentClazz.getAnnotation((Class) annotation);
+          Class<?> enclosingClass = currentClazz.getEnclosingClass();
+
+          T a = (T) currentClazz.getAnnotation((Class) annotation);
           if (a != null) {
               return a;
           }
+
+          while (enclosingClass != null) {
+              a = (T) enclosingClass.getAnnotation((Class) annotation);
+              if (a != null) {
+                  return a;
+              }
+              enclosingClass = enclosingClass.getEnclosingClass();
+          }
+
           currentClazz = currentClazz.getSuperclass();
       }
 
       return null;
 
+  }
+
+  private static boolean isTestrunnerClass(final Class<?> clazz) {
+      Class<?> currentClazz = clazz;
+
+      while (currentClazz != null) {
+          if (TESTRUNNER_CLASSES.contains(currentClazz)) {
+              return true;
+          }
+
+          Class<?> enclosingClass = currentClazz.getEnclosingClass();
+          while (enclosingClass != null) {
+              if (isTestrunnerClass(enclosingClass)) {
+                return true;
+              }
+            enclosingClass = enclosingClass.getEnclosingClass();
+          }
+
+          currentClazz = currentClazz.getSuperclass();
+      }
+      return false;
   }
 
 
@@ -541,16 +605,29 @@ public class LessIOSecurityManager extends SecurityManager {
     }
 
     Class<?> enclosingClass = clazz.getEnclosingClass();
-    if (enclosingClass != null) {
-      return isClassWhitelisted(enclosingClass);
+    while (enclosingClass != null) {
+      if (isClassWhitelisted(enclosingClass)) {
+        return true;
+      }
+      enclosingClass = enclosingClass.getEnclosingClass();
     }
 
     return false;
   }
 
+  /**
+   * check whether a class is whitelisted or explicitly allowed to
+   * execute an operation.
+   */
   private boolean traceWithoutExplicitlyAllowedClass(Class<?>[] classContext) {
+    // whitelisted classes.
     for (Class<?> clazz : classContext) {
       if (isClassWhitelisted(clazz)) {
+        return false;
+      }
+
+      // Any class marked as a test runner can declare itself to allow everything.
+      if (isTestrunnerClass(clazz) && hasAnnotations(clazz, AllowAll.class)) {
         return false;
       }
     }
@@ -561,21 +638,33 @@ public class LessIOSecurityManager extends SecurityManager {
 		  final Predicate<Class<?>> classAuthorized) throws CantDoItException {
     // Only check permissions when we're running in the context of a JUnit test.
     boolean encounteredTestMethodRunner = false;
-    for (Class<?> clazz : classContext) {
-      if (clazz.getName().equals("org.junit.runners.ParentRunner")
-          || clazz.getName().equals("org.junit.internal.runners.statements.RunAfters")
-          || clazz.getName().equals("org.junit.internal.runners.statements.RunBefores")) {
-        encounteredTestMethodRunner = true;
-      }
-    }
-    if (!encounteredTestMethodRunner) {
-      return;
-    }
+    boolean failed = false;
 
     for (Class<?> clazz : classContext) {
+      // Check whether any of the classes on the stack is one of the
+      // test runner classes.
+      if (isTestrunnerClass(clazz)) {
+        encounteredTestMethodRunner = true;
+      }
+      else if (hasAnnotations(clazz, AllowAll.class)) {
+        LOG.error("Found @AllowAll on a non-testrunner class (%s), refusing to run test!", clazz.getName());
+        failed = true;
+        break; // for
+      }
+
+      // Look whether any class in the stack is properly authorized to run the
+      // operation.
       if (classAuthorized.apply(clazz)) {
         return;
       }
+    }
+
+    if (!failed && !encounteredTestMethodRunner) {
+      if (this.reporting) {
+          LOG.debug("No test runner encountered, assuming a non-test context");
+      }
+
+      return;
     }
 
     // No class on the stack trace is properly authorized, throw an exception.
@@ -604,11 +693,10 @@ public class LessIOSecurityManager extends SecurityManager {
     // array is the class that contains our test.
     Class<?> testClass = null;
     for (Class<?> clazz : classContext) {
-      if (clazz.getName().equals("org.junit.runners.ParentRunner")
-          || clazz.getName().equals("org.junit.internal.runners.statements.RunAfters")
-          || clazz.getName().equals("org.junit.internal.runners.statements.RunBefores")) {
+      if (isTestrunnerClass(clazz)) {
         break;
       }
+
       testClass = clazz;
     }
 

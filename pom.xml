@@ -4,7 +4,7 @@
   <parent>
     <groupId>com.nesscomputing</groupId>
     <artifactId>ness-oss-parent</artifactId>
-    <version>5</version>
+    <version>9</version>
   </parent>
 
   <groupId>com.nesscomputing.testing</groupId>
@@ -21,20 +21,17 @@
     <dependency>
       <groupId>com.nesscomputing.components</groupId>
       <artifactId>ness-logging</artifactId>
-      <version>1.0.2</version>
+      <version>1.1.0</version>
     </dependency>
 
     <dependency>
       <groupId>com.google.guava</groupId>
       <artifactId>guava</artifactId>
-      <version>11.0.1</version> 
     </dependency>
 
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit-dep</artifactId>
-      <version>4.10</version>
-      <scope>test</scope>
     </dependency>
   </dependencies>
 
