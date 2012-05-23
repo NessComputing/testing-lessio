@@ -35,17 +35,6 @@
     </dependency>
   </dependencies>
 
-  <!-- genius or insanity? - you decide. -->
-  <dependencyManagement>
-    <dependencies>
-      <dependency>
-        <groupId>com.nesscomputing.testing</groupId>
-        <artifactId>kawala-lessio</artifactId>
-        <version>${project.version}</version>
-      </dependency>
-    </dependencies>
-  </dependencyManagement>
-
   <build>
     <plugins>
       <plugin>
