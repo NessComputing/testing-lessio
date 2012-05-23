@@ -21,10 +21,20 @@ import static java.lang.Thread.currentThread;
 import java.io.FileDescriptor;
 import java.net.InetAddress;
 import java.security.Permission;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.junit.internal.runners.statements.InvokeMethod;
+import org.junit.internal.runners.statements.RunAfters;
+import org.junit.internal.runners.statements.RunBefores;
+import org.junit.rules.TestRule;
+import org.junit.runners.ParentRunner;
+import org.junit.runners.model.FrameworkMethod;
+import org.junit.runners.model.Statement;
+
+import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -77,7 +87,6 @@ import com.nesscomputing.logging.Log;
  *      {@link AllowLocalFileAccess}, {@link AllowNetworkAccess}, and
  *      {@link AllowNetworkMulticast}
  */
-@SuppressWarnings("deprecation")
 public class LessIOSecurityManager extends SecurityManager {
 
   private static final Log LOG = Log.findLog();
@@ -89,13 +98,29 @@ public class LessIOSecurityManager extends SecurityManager {
           new AtomicReference<List<String>>(getClassPath());
 
   protected static final String TMP_DIR = System.getProperty("java.io.tmpdir").replaceFirst("/$", "");
-  private static final Set<Class<?>> whitelistedClasses = ImmutableSet.<Class<?>>of(
-                                                            java.lang.ClassLoader.class,
-                                                            java.net.URLClassLoader.class);
 
-  private static final int lowestEphemeralPort = Integer.getInteger("ness.testing.low-ephemeral-port", Integer.getInteger("kawala.testing.low-ephemeral-port", 32768));
-  private static final int highestEphemeralPort = Integer.getInteger("ness.testing.high-ephemeral-port", Integer.getInteger("kawala.testing.high-ephemeral-port", 65535));
-  private static final Set<Integer> allocatedEphemeralPorts = Sets.newSetFromMap(Maps.<Integer, Boolean>newConcurrentMap());
+  private static final Set<Class<?>> whitelistedClasses  = ImmutableSet.<Class<?>>of(java.lang.ClassLoader.class,
+                                                                                     java.net.URLClassLoader.class);
+
+  private static final Set<Class<?>> TESTRUNNER_CLASSES;
+
+  static {
+      final Set<Class<?>> testrunnerClasses = Sets.newIdentityHashSet();
+      testrunnerClasses.add(ParentRunner.class);
+      testrunnerClasses.add(RunAfters.class);
+      testrunnerClasses.add(RunBefores.class);
+      testrunnerClasses.add(FrameworkMethod.class);
+      testrunnerClasses.add(InvokeMethod.class);
+      testrunnerClasses.add(TestRule.class);
+      testrunnerClasses.add(Statement.class);
+
+      TESTRUNNER_CLASSES = Collections.unmodifiableSet(testrunnerClasses);
+  }
+
+  private final int lowestEphemeralPort = Integer.getInteger("ness.testing.low-ephemeral-port", Integer.getInteger("kawala.testing.low-ephemeral-port", 32768));
+  private final int highestEphemeralPort = Integer.getInteger("ness.testing.high-ephemeral-port", Integer.getInteger("kawala.testing.high-ephemeral-port", 65535));
+  private final Set<Integer> allocatedEphemeralPorts = Sets.newSetFromMap(Maps.<Integer, Boolean>newConcurrentMap());
+  private final boolean reporting = Boolean.getBoolean("ness.testing.security-manager.reporting");
 
   /**
    * Any subclasses that override this method <b>must</b> include any Class<?>
@@ -116,19 +141,90 @@ public class LessIOSecurityManager extends SecurityManager {
     return whitelistedClasses;
   }
 
-  private final boolean reporting;
-
-  public LessIOSecurityManager() {
-    this(true);
-  }
-
-  protected LessIOSecurityManager(boolean reporting) {
-    this.reporting = reporting;
-  }
-
   private static ImmutableList<String> getClassPath() {
       return ImmutableList.copyOf(System.getProperty("java.class.path").split(PATH_SEPARATOR));
   }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  private static boolean hasAnnotations(final Class<?> clazz, final Class<?> ... annotations)
+  {
+      Preconditions.checkArgument(clazz != null, "clazz argument can not be null!");
+      Preconditions.checkArgument(annotations != null && annotations.length > 0, "at least one annotation must be present");
+
+      // Check class and parent classes.
+      Class<?> currentClazz = clazz;
+      while (currentClazz != null) {
+          Class<?> enclosingClass = currentClazz.getEnclosingClass();
+
+          for (Class annotation : annotations) {
+              if (currentClazz.getAnnotation(annotation) != null) {
+                  return true;
+              }
+              while (enclosingClass != null) {
+                  if (enclosingClass.getAnnotation(annotation) != null) {
+                      return true;
+                  }
+                  enclosingClass = enclosingClass.getEnclosingClass();
+              }
+          }
+          currentClazz = currentClazz.getSuperclass();
+      }
+
+      return false;
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  private static <T> T findAnnotation(final Class<?> clazz, final Class<T> annotation)
+  {
+      Preconditions.checkArgument(clazz != null, "clazz argument can not be null!");
+      Preconditions.checkArgument(annotation != null, "annotation must be present");
+
+      // Check class and parent classes.
+      Class<?> currentClazz = clazz;
+      while (currentClazz != null) {
+          Class<?> enclosingClass = currentClazz.getEnclosingClass();
+
+          T a = (T) currentClazz.getAnnotation((Class) annotation);
+          if (a != null) {
+              return a;
+          }
+
+          while (enclosingClass != null) {
+              a = (T) enclosingClass.getAnnotation((Class) annotation);
+              if (a != null) {
+                  return a;
+              }
+              enclosingClass = enclosingClass.getEnclosingClass();
+          }
+
+          currentClazz = currentClazz.getSuperclass();
+      }
+
+      return null;
+
+  }
+
+  private static boolean isTestrunnerClass(final Class<?> clazz) {
+      Class<?> currentClazz = clazz;
+
+      while (currentClazz != null) {
+          if (TESTRUNNER_CLASSES.contains(currentClazz)) {
+              return true;
+          }
+
+          Class<?> enclosingClass = currentClazz.getEnclosingClass();
+          while (enclosingClass != null) {
+              if (isTestrunnerClass(enclosingClass)) {
+                return true;
+              }
+            enclosingClass = enclosingClass.getEnclosingClass();
+          }
+
+          currentClazz = currentClazz.getSuperclass();
+      }
+      return false;
+  }
+
 
   // {{ Allowed only via {@link @AllowNetworkAccess}, {@link @AllowDNSResolution}, or {@link @AllowNetworkMulticast})
   protected void checkDNSResolution(Class<?>[] classContext) throws CantDoItException {
@@ -136,13 +232,7 @@ public class LessIOSecurityManager extends SecurityManager {
       checkClassContextPermissions(classContext, new Predicate<Class<?>>() {
         @Override
         public boolean apply(Class<?> input) {
-          if ((input.getAnnotation(AllowDNSResolution.class) != null) || (input.getAnnotation(com.kaching.platform.testing.AllowDNSResolution.class) != null)
-              || (input.getAnnotation(AllowNetworkMulticast.class) != null) || (input.getAnnotation(com.kaching.platform.testing.AllowNetworkMulticast.class) != null)
-              || (input.getAnnotation(AllowNetworkListen.class) != null)  || (input.getAnnotation(com.kaching.platform.testing.AllowNetworkListen.class) != null)
-              || (input.getAnnotation(AllowNetworkAccess.class) != null)  || (input.getAnnotation(com.kaching.platform.testing.AllowNetworkAccess.class) != null)) {
-            return true;
-          }
-          return false;
+            return hasAnnotations(input, AllowDNSResolution.class, AllowNetworkMulticast.class, AllowNetworkListen.class, AllowNetworkAccess.class);
         }
 
         @Override
@@ -166,13 +256,10 @@ public class LessIOSecurityManager extends SecurityManager {
         @Override
         public boolean apply(Class<?> input) {
           String [] endpoints = null;
-          if (input.getAnnotation(AllowNetworkAccess.class) != null) {
-            endpoints = input.getAnnotation(AllowNetworkAccess.class).endpoints();
+          final AllowNetworkAccess access = findAnnotation(input, AllowNetworkAccess.class);
+          if (access != null) {
+              endpoints = access.endpoints();
           }
-          else if (input.getAnnotation(com.kaching.platform.testing.AllowNetworkAccess.class) != null) {
-            endpoints = input.getAnnotation(com.kaching.platform.testing.AllowNetworkAccess.class).endpoints();
-          }
-
           if (endpoints == null) {
             return false;
           }
@@ -222,13 +309,10 @@ public class LessIOSecurityManager extends SecurityManager {
         @Override
         public boolean apply(Class<?> input) {
           int [] ports = null;
-          if (input.getAnnotation(AllowNetworkListen.class) != null) {
-            ports = input.getAnnotation(AllowNetworkListen.class).ports();
+          final AllowNetworkListen a = findAnnotation(input, AllowNetworkListen.class);
+          if (a != null) {
+              ports = a.ports();
           }
-          else if (input.getAnnotation(com.kaching.platform.testing.AllowNetworkListen.class) != null) {
-              ports = input.getAnnotation(com.kaching.platform.testing.AllowNetworkListen.class).ports();
-          }
-
           if (ports == null) {
             return false;
         }
@@ -258,11 +342,7 @@ public class LessIOSecurityManager extends SecurityManager {
       checkClassContextPermissions(classContext, new Predicate<Class<?>>() {
         @Override
         public boolean apply(Class<?> input) {
-          if (input.getAnnotation(AllowNetworkMulticast.class) != null || input.getAnnotation(com.kaching.platform.testing.AllowNetworkMulticast.class) != null) {
-            return true;
-          } else {
-            return false;
-          }
+            return hasAnnotations(input, AllowNetworkMulticast.class);
         }
 
         @Override
@@ -311,13 +391,11 @@ public class LessIOSecurityManager extends SecurityManager {
           @Override
           public boolean apply(Class<?> input) {
             String [] paths = null;
-            if (input.getAnnotation(AllowLocalFileAccess.class) != null) {
-              paths = input.getAnnotation(AllowLocalFileAccess.class).paths();
-            }
-            else if (input.getAnnotation(com.kaching.platform.testing.AllowLocalFileAccess.class) != null) {
-              paths = input.getAnnotation(com.kaching.platform.testing.AllowLocalFileAccess.class).paths();
-            }
+            final AllowLocalFileAccess a = findAnnotation(input, AllowLocalFileAccess.class);
 
+            if (a != null) {
+                paths = a.paths();
+            }
             if (paths == null) {
               return false;
             }
@@ -354,19 +432,17 @@ public class LessIOSecurityManager extends SecurityManager {
       checkClassContextPermissions(classContext, new Predicate<Class<?>>() {
         @Override
         public boolean apply(Class<?> input) {
-          if (input.getAnnotation(AllowExternalProcess.class) != null || input.getAnnotation(com.kaching.platform.testing.AllowExternalProcess.class) != null
-              || input.getAnnotation(AllowNetworkAccess.class) != null || input.getAnnotation(com.kaching.platform.testing.AllowNetworkAccess.class) != null) {
-            // AllowExternalProcess and AllowNetworkAccess imply @AllowLocalFileAccess({"%FD%"}),
-            // since it's required.
-            return true;
+          // AllowExternalProcess and AllowNetworkAccess imply @AllowLocalFileAccess({"%FD%"}),
+          // since it's required.
+          if (hasAnnotations(input, AllowExternalProcess.class, AllowNetworkAccess.class)) {
+              return true;
           }
 
           String [] paths = null;
-          if (input.getAnnotation(AllowLocalFileAccess.class) != null) {
-            paths = input.getAnnotation(AllowLocalFileAccess.class).paths();
-          }
-          else if (input.getAnnotation(com.kaching.platform.testing.AllowLocalFileAccess.class) != null) {
-            paths = input.getAnnotation(com.kaching.platform.testing.AllowLocalFileAccess.class).paths();
+          final AllowLocalFileAccess a = findAnnotation(input, AllowLocalFileAccess.class);
+
+          if (a != null) {
+              paths = a.paths();
           }
 
           if (paths == null) {
@@ -430,12 +506,7 @@ public class LessIOSecurityManager extends SecurityManager {
       checkClassContextPermissions(classContext, new Predicate<Class<?>>() {
         @Override
         public boolean apply(Class<?> input) {
-
-            if (input.getAnnotation(AllowExternalProcess.class) != null || input.getAnnotation(com.kaching.platform.testing.AllowExternalProcess.class) != null) {
-            return true;
-          } else {
-            return false;
-          }
+            return hasAnnotations(input, AllowExternalProcess.class);
         }
 
         @Override
@@ -450,33 +521,45 @@ public class LessIOSecurityManager extends SecurityManager {
   // {{ Closely Monitored
   @Override
   public void checkExit(int status) {
-    LOG.info("%s: exit(%d)", currentTest(getClassContext()), status);
+      if (this.reporting) {
+          LOG.debug("%s: exit(%d)", currentTest(getClassContext()), status);
+      }
   }
 
   @Override
   public void checkLink(String lib) {
-    LOG.info("%s: System.loadLibrary(\"%s\")", currentTest(getClassContext()), lib);
+      if (this.reporting) {
+          LOG.debug("%s: System.loadLibrary(\"%s\")", currentTest(getClassContext()), lib);
+      }
   }
 
   @Override
   public void checkAwtEventQueueAccess() {
-    LOG.info("%s: AwtEventQueue Access", currentTest(getClassContext()));
+      if (this.reporting) {
+          LOG.debug("%s: AwtEventQueue Access", currentTest(getClassContext()));
+      }
   }
 
   @Override
   public void checkPrintJobAccess() {
-    LOG.info("%s: PrintJob Access", currentTest(getClassContext()));
+      if (this.reporting) {
+          LOG.debug("%s: PrintJob Access", currentTest(getClassContext()));
+      }
   }
 
   @Override
   public void checkSystemClipboardAccess() {
-    LOG.info("%s: SystemClipboard Access", currentTest(getClassContext()));
+      if (this.reporting) {
+          LOG.debug("%s: SystemClipboard Access", currentTest(getClassContext()));
+      }
   }
 
   @Override
   public boolean checkTopLevelWindow(Object window) {
-    LOG.info("%s: checkTopLevelWindow aka AWTPermission(\"showWindowWithoutWarningBanner\")", currentTest(getClassContext()));
-    return true;
+      if (this.reporting) {
+          LOG.debug("%s: checkTopLevelWindow aka AWTPermission(\"showWindowWithoutWarningBanner\")", currentTest(getClassContext()));
+      }
+      return true;
   }
 
   // }}
@@ -522,16 +605,29 @@ public class LessIOSecurityManager extends SecurityManager {
     }
 
     Class<?> enclosingClass = clazz.getEnclosingClass();
-    if (enclosingClass != null) {
-      return isClassWhitelisted(enclosingClass);
+    while (enclosingClass != null) {
+      if (isClassWhitelisted(enclosingClass)) {
+        return true;
+      }
+      enclosingClass = enclosingClass.getEnclosingClass();
     }
 
     return false;
   }
 
+  /**
+   * check whether a class is whitelisted or explicitly allowed to
+   * execute an operation.
+   */
   private boolean traceWithoutExplicitlyAllowedClass(Class<?>[] classContext) {
+    // whitelisted classes.
     for (Class<?> clazz : classContext) {
       if (isClassWhitelisted(clazz)) {
+        return false;
+      }
+
+      // Any class marked as a test runner can declare itself to allow everything.
+      if (isTestrunnerClass(clazz) && hasAnnotations(clazz, AllowAll.class)) {
         return false;
       }
     }
@@ -542,21 +638,33 @@ public class LessIOSecurityManager extends SecurityManager {
 		  final Predicate<Class<?>> classAuthorized) throws CantDoItException {
     // Only check permissions when we're running in the context of a JUnit test.
     boolean encounteredTestMethodRunner = false;
-    for (Class<?> clazz : classContext) {
-      if (clazz.getName().equals("org.junit.runners.ParentRunner")
-          || clazz.getName().equals("org.junit.internal.runners.statements.RunAfters")
-          || clazz.getName().equals("org.junit.internal.runners.statements.RunBefores")) {
-        encounteredTestMethodRunner = true;
-      }
-    }
-    if (!encounteredTestMethodRunner) {
-      return;
-    }
+    boolean failed = false;
 
     for (Class<?> clazz : classContext) {
+      // Check whether any of the classes on the stack is one of the
+      // test runner classes.
+      if (isTestrunnerClass(clazz)) {
+        encounteredTestMethodRunner = true;
+      }
+      else if (hasAnnotations(clazz, AllowAll.class)) {
+        LOG.error("Found @AllowAll on a non-testrunner class (%s), refusing to run test!", clazz.getName());
+        failed = true;
+        break; // for
+      }
+
+      // Look whether any class in the stack is properly authorized to run the
+      // operation.
       if (classAuthorized.apply(clazz)) {
         return;
       }
+    }
+
+    if (!failed && !encounteredTestMethodRunner) {
+      if (this.reporting) {
+          LOG.debug("No test runner encountered, assuming a non-test context");
+      }
+
+      return;
     }
 
     // No class on the stack trace is properly authorized, throw an exception.
@@ -585,11 +693,10 @@ public class LessIOSecurityManager extends SecurityManager {
     // array is the class that contains our test.
     Class<?> testClass = null;
     for (Class<?> clazz : classContext) {
-      if (clazz.getName().equals("org.junit.runners.ParentRunner")
-          || clazz.getName().equals("org.junit.internal.runners.statements.RunAfters")
-          || clazz.getName().equals("org.junit.internal.runners.statements.RunBefores")) {
+      if (isTestrunnerClass(clazz)) {
         break;
       }
+
       testClass = clazz;
     }
 
