@@ -104,6 +104,8 @@ public class LessIOSecurityManager extends SecurityManager {
 
     private static final Set<Class<?>> TESTRUNNER_CLASSES;
 
+    private static final Set<String> LOCAL_HOSTS = ImmutableSet.of("localhost", "127.0.0.1", "::1");
+
     static {
         final Set<Class<?>> testrunnerClasses = Sets.newIdentityHashSet();
         testrunnerClasses.add(ParentRunner.class);
@@ -244,7 +246,12 @@ public class LessIOSecurityManager extends SecurityManager {
 
 
     // {{ Allowed only via {@link @AllowNetworkAccess}, {@link @AllowDNSResolution}, or {@link @AllowNetworkMulticast})
-    protected void checkDNSResolution(Class<?>[] classContext) throws CantDoItException {
+    protected void checkDNSResolution(Class<?>[] classContext, String host) throws CantDoItException {
+
+        if (LOCAL_HOSTS.contains(host)) {
+            return; // Always allow localhost
+        }
+
         if (traceWithoutExplicitlyAllowedClass(classContext)) {
             checkClassContextPermissions(classContext, new Predicate<Class<?>>() {
                 @Override
@@ -264,7 +271,7 @@ public class LessIOSecurityManager extends SecurityManager {
         Class<?>[] classContext = getClassContext();
 
         if (port == -1) {
-            checkDNSResolution(classContext);
+            checkDNSResolution(classContext, host);
             return;
         }
 
