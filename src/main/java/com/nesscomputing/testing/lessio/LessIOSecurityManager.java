@@ -89,7 +89,10 @@ import com.nesscomputing.logging.Log;
  */
 public class LessIOSecurityManager extends SecurityManager {
 
-    private static final Log LOG = Log.findLog();
+    private static class LogHolder {
+        private static final Log LOG = Log.forClass(LessIOSecurityManager.class);
+    }
+
     protected static final String JAVA_HOME = System.getProperty("java.home");
     protected static final String PATH_SEPARATOR = System.getProperty("path.separator");
 
@@ -539,42 +542,42 @@ public class LessIOSecurityManager extends SecurityManager {
     @Override
     public void checkExit(int status) {
         if (this.reporting) {
-            LOG.debug("%s: exit(%d)", currentTest(getClassContext()), status);
+            LogHolder.LOG.debug("%s: exit(%d)", currentTest(getClassContext()), status);
         }
     }
 
     @Override
     public void checkLink(String lib) {
         if (this.reporting) {
-            LOG.debug("%s: System.loadLibrary(\"%s\")", currentTest(getClassContext()), lib);
+            LogHolder.LOG.debug("%s: System.loadLibrary(\"%s\")", currentTest(getClassContext()), lib);
         }
     }
 
     @Override
     public void checkAwtEventQueueAccess() {
         if (this.reporting) {
-            LOG.debug("%s: AwtEventQueue Access", currentTest(getClassContext()));
+            LogHolder.LOG.debug("%s: AwtEventQueue Access", currentTest(getClassContext()));
         }
     }
 
     @Override
     public void checkPrintJobAccess() {
         if (this.reporting) {
-            LOG.debug("%s: PrintJob Access", currentTest(getClassContext()));
+            LogHolder.LOG.debug("%s: PrintJob Access", currentTest(getClassContext()));
         }
     }
 
     @Override
     public void checkSystemClipboardAccess() {
         if (this.reporting) {
-            LOG.debug("%s: SystemClipboard Access", currentTest(getClassContext()));
+            LogHolder.LOG.debug("%s: SystemClipboard Access", currentTest(getClassContext()));
         }
     }
 
     @Override
     public boolean checkTopLevelWindow(Object window) {
         if (this.reporting) {
-            LOG.debug("%s: checkTopLevelWindow aka AWTPermission(\"showWindowWithoutWarningBanner\")", currentTest(getClassContext()));
+            LogHolder.LOG.debug("%s: checkTopLevelWindow aka AWTPermission(\"showWindowWithoutWarningBanner\")", currentTest(getClassContext()));
         }
         return true;
     }
@@ -664,7 +667,7 @@ public class LessIOSecurityManager extends SecurityManager {
                 encounteredTestMethodRunner = true;
             }
             else if (hasAnnotations(clazz, AllowAll.class)) {
-                LOG.error("Found @AllowAll on a non-testrunner class (%s), refusing to run test!", clazz.getName());
+                LogHolder.LOG.error("Found @AllowAll on a non-testrunner class (%s), refusing to run test!", clazz.getName());
                 failed = true;
                 break; // for
             }
@@ -678,7 +681,7 @@ public class LessIOSecurityManager extends SecurityManager {
 
         if (!failed && !encounteredTestMethodRunner) {
             if (this.reporting) {
-                LOG.debug("No test runner encountered, assuming a non-test context");
+                LogHolder.LOG.debug("No test runner encountered, assuming a non-test context");
             }
 
             return;
@@ -693,12 +696,12 @@ public class LessIOSecurityManager extends SecurityManager {
             if (testClassStackFrame != null) {
                 testName = format("%s.%s():%d", testClassStackFrame.getClassName(), testClassStackFrame.getMethodName(), testClassStackFrame.getLineNumber());
             }
-            LOG.error("%s: No %s at %s", testName, classAuthorized, testName);
-            for (StackTraceElement el : currentThread().getStackTrace()) {
-                LOG.trace("%s: Stack: %s.%s():%d", testName, el.getClassName(), el.getMethodName(), el.getLineNumber());
+            LogHolder.LOG.error("%s: No %s at %s", testName, classAuthorized, testName);
+            for (final StackTraceElement el : currentThread().getStackTrace()) {
+                LogHolder.LOG.trace("%s: Stack: %s.%s():%d", testName, el.getClassName(), el.getMethodName(), el.getLineNumber());
             }
-            for (Class<?> cl : classContext) {
-                LOG.trace("%s: Class Context: %s %s", testName, cl.getCanonicalName(), cl);
+            for (final Class<?> cl : classContext) {
+                LogHolder.LOG.trace("%s: Class Context: %s %s", testName, cl.getCanonicalName(), cl);
             }
         }
 
