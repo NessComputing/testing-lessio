@@ -27,10 +27,20 @@ import com.nesscomputing.testing.lessio.LessIOSecurityManager;
 
 public class AllowDNSResolutionTest extends LessIOSecurityManagerTestHelper {
   protected class DisallowedOperation implements RunnableWithException {
+    @Override
     public void run() throws IOException {
       Inet4Address.getByName("example.com");
     }
   }
+
+  protected class LocalhostOperation implements RunnableWithException {
+    @Override
+    public void run() throws IOException {
+        Inet4Address.getByName("127.0.0.1");
+        Inet4Address.getByName("localhost");
+        Inet4Address.getByName("::1");
+      }
+    }
 
   @AllowDNSResolution
   protected class AllowedOperation extends DisallowedOperation {
@@ -50,6 +60,11 @@ public class AllowDNSResolutionTest extends LessIOSecurityManagerTestHelper {
   @Test
   public void testNonAnnotatedOperation() {
     assertDisallowed(sm, new DisallowedOperation());
+  }
+
+  @Test
+  public void testNonAnnotatedLocalhost() {
+    assertAllowed(sm, new LocalhostOperation(), Option.<Class<? extends Exception>> none());
   }
 
   @Test
