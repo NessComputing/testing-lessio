@@ -107,7 +107,7 @@ public class LessIOSecurityManager extends SecurityManager {
 
     private static final Set<Class<?>> TESTRUNNER_CLASSES;
 
-    private static final Set<String> LOCAL_HOSTS = ImmutableSet.of("localhost", "127.0.0.1", "::1");
+    private static final Set<String> LOCAL_HOSTS = ImmutableSet.of("localhost", "127.0.0.1", "::1"); // NOPMD
 
     static {
         final Set<Class<?>> testrunnerClasses = Sets.newIdentityHashSet();
