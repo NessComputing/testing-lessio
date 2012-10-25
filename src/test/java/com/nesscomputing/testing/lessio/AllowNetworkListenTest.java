@@ -29,9 +29,12 @@ public class AllowNetworkListenTest extends LessIOSecurityManagerTestHelper {
   protected class DisallowedOperation implements RunnableWithException {
     public void run() throws IOException {
       ServerSocket s1 = new ServerSocket(59413);
-      ServerSocket s2 = new ServerSocket(48819);
-      s1.close();
-      s2.close();
+      try {
+          ServerSocket s2 = new ServerSocket(48819);
+          s2.close();
+      } finally {
+          s1.close();
+      }
     }
   }
 
