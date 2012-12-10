@@ -4,7 +4,7 @@
   <parent>
     <groupId>com.nesscomputing</groupId>
     <artifactId>ness-oss-parent</artifactId>
-    <version>20</version>
+    <version>21</version>
   </parent>
 
   <groupId>com.nesscomputing.testing</groupId>
@@ -38,7 +38,7 @@
 
     <dependency>
       <groupId>junit</groupId>
-      <artifactId>junit-dep</artifactId>
+      <artifactId>junit</artifactId>
     </dependency>
   </dependencies>
 
