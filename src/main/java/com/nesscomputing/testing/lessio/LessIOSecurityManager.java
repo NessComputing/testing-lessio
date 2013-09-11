@@ -26,6 +26,13 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.google.common.base.Preconditions;
+import com.google.common.base.Predicate;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
+
 import org.junit.internal.runners.statements.InvokeMethod;
 import org.junit.internal.runners.statements.RunAfters;
 import org.junit.internal.runners.statements.RunBefores;
@@ -33,14 +40,8 @@ import org.junit.rules.TestRule;
 import org.junit.runners.ParentRunner;
 import org.junit.runners.model.FrameworkMethod;
 import org.junit.runners.model.Statement;
-
-import com.google.common.base.Preconditions;
-import com.google.common.base.Predicate;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
-import com.nesscomputing.logging.Log;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A {@link SecurityManager} to spotlight and minimize IO access while allowing
@@ -90,7 +91,7 @@ import com.nesscomputing.logging.Log;
 public class LessIOSecurityManager extends SecurityManager {
 
     private static class LogHolder {
-        private static final Log LOG = Log.forClass(LessIOSecurityManager.class);
+        private static final Logger LOG = LoggerFactory.getLogger(LessIOSecurityManager.class);
     }
 
     protected static final String JAVA_HOME = System.getProperty("java.home");
