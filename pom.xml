@@ -9,13 +9,13 @@
 
   <groupId>com.nesscomputing.testing</groupId>
   <artifactId>kawala-lessio</artifactId>
-  <version>2.2.0</version>
+  <version>2.2.1-SNAPSHOT</version>
 
   <scm>
     <connection>scm:git:git://github.com/NessComputing/testing-lessio.git</connection>
     <developerConnection>scm:git:git@github.com:NessComputing/testing-lessio.git</developerConnection>
     <url>http://github.com/NessComputing/testing-lessio</url>
-    <tag>kawala-lessio-2.2.0</tag>
+    <tag>HEAD</tag>
   </scm>
 
   <dependencies>
