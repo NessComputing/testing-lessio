@@ -91,6 +91,7 @@ import org.slf4j.LoggerFactory;
 public class LessIOSecurityManager extends SecurityManager {
 
     private static class LogHolder {
+        @SuppressWarnings("PMD.UnusedPrivateField")
         private static final Logger LOG = LoggerFactory.getLogger(LessIOSecurityManager.class);
     }
 
@@ -188,12 +189,12 @@ public class LessIOSecurityManager extends SecurityManager {
         // Check class and parent classes.
         Class<?> currentClazz = clazz;
         while (currentClazz != null) {
-            Class<?> enclosingClass = currentClazz.getEnclosingClass();
-
             T a = (T) currentClazz.getAnnotation((Class) annotation);
             if (a != null) {
                 return a;
             }
+
+            Class<?> enclosingClass = currentClazz.getEnclosingClass();
 
             while (enclosingClass != null) {
                 a = (T) enclosingClass.getAnnotation((Class) annotation);
@@ -414,42 +415,38 @@ public class LessIOSecurityManager extends SecurityManager {
                 }
             }
 
-            try {
-                checkClassContextPermissions(classContext, new Predicate<Class<?>>() {
-                    @Override
-                    public boolean apply(Class<?> input) {
-                        String [] paths = null;
-                        final AllowLocalFileAccess a = findAnnotation(input, AllowLocalFileAccess.class);
+            checkClassContextPermissions(classContext, new Predicate<Class<?>>() {
+                @Override
+                public boolean apply(Class<?> input) {
+                    String [] paths = null;
+                    final AllowLocalFileAccess a = findAnnotation(input, AllowLocalFileAccess.class);
 
-                        if (a != null) {
-                            paths = a.paths();
-                        }
-                        if (paths == null) {
-                            return false;
-                        }
-
-                        for (String p : paths) {
-                            if ((p.equals("*"))
-                                            || (p.equals(file))
-                                            || (p.contains("%TMP_DIR%") && (file.startsWith(p.replaceAll("%TMP_DIR%", TMP_DIR))))
-                                            || (p.startsWith("*") && p.endsWith("*") && file.contains(p.split("\\*")[1]))
-                                            || (p.startsWith("*") && file.endsWith(p.replaceFirst("^\\*", "")))
-                                            || (p.endsWith("*") && file.startsWith(p.replaceFirst("\\*$", "")))) {
-                                return true;
-                            }
-                        }
+                    if (a != null) {
+                        paths = a.paths();
+                    }
+                    if (paths == null) {
                         return false;
                     }
 
-                    @Override
-                    public String toString() {
-                        return String.format("@AllowLocalFileAccess for %s (%s)", file,
-                                             description);
+                    for (String p : paths) {
+                        if ((p.equals("*"))
+                                        || (p.equals(file))
+                                        || (p.contains("%TMP_DIR%") && (file.startsWith(p.replaceAll("%TMP_DIR%", TMP_DIR))))
+                                        || (p.startsWith("*") && p.endsWith("*") && file.contains(p.split("\\*")[1]))
+                                        || (p.startsWith("*") && file.endsWith(p.replaceFirst("^\\*", "")))
+                                        || (p.endsWith("*") && file.startsWith(p.replaceFirst("\\*$", "")))) {
+                            return true;
+                        }
                     }
-                });
-            } catch (CantDoItException e) {
-                throw e;
-            }
+                    return false;
+                }
+
+                @Override
+                public String toString() {
+                    return String.format("@AllowLocalFileAccess for %s (%s)", file,
+                                         description);
+                }
+            });
         }
     }
 
