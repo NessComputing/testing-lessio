@@ -15,21 +15,14 @@
  */
 package com.nesscomputing.testing.lessio;
 
-import static java.lang.String.format;
-import static java.lang.Thread.currentThread;
-
-import java.io.FileDescriptor;
-import java.net.InetAddress;
-import java.security.Permission;
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
-
+import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
+import com.google.common.base.Splitter;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 
@@ -42,6 +35,28 @@ import org.junit.runners.model.FrameworkMethod;
 import org.junit.runners.model.Statement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.FileDescriptor;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.URI;
+import java.net.URL;
+import java.security.Permission;
+import java.util.Collections;
+import java.util.Enumeration;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.jar.Attributes;
+import java.util.jar.Manifest;
+
+import javax.annotation.Nonnull;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+
+import static java.lang.String.format;
+import static java.lang.Thread.currentThread;
 
 /**
  * A {@link SecurityManager} to spotlight and minimize IO access while allowing
@@ -98,6 +113,30 @@ public class LessIOSecurityManager extends SecurityManager {
     protected static final String JAVA_HOME = System.getProperty("java.home");
     protected static final String PATH_SEPARATOR = System.getProperty("path.separator");
 
+    private static final Function<String, String> FILE_FUNCTION = new Function<String, String>() {
+        @Override
+        public String apply(@Nonnull final String value)
+        {
+            checkNotNull(value, "value is null");
+            try {
+                return new File(URI.create(value)).getAbsolutePath();
+            }
+            catch (Exception e) {
+                throw new CantDoItException("Can not convert URI " + value + " to file location:");
+            }
+        };
+    };
+
+    private static final Predicate<String> SUREFIRE_PREDICATE = new Predicate<String>() {
+        @Override
+        public boolean apply(@Nonnull final String name)
+        {
+            checkNotNull(name, "name is null");
+            return name.contains("surefirebooter");
+        }
+    };
+
+
     // Updated at SecurityManager init and again at every ClassLoader init.
     protected static final AtomicReference<List<String>> CP_PARTS =
         new AtomicReference<List<String>>(getClassPath());
@@ -148,8 +187,54 @@ public class LessIOSecurityManager extends SecurityManager {
         return whitelistedClasses;
     }
 
-    private static ImmutableList<String> getClassPath() {
-        return ImmutableList.copyOf(System.getProperty("java.class.path").split(PATH_SEPARATOR));
+    @SuppressWarnings("PMD.SystemPrintln")
+    private static List<String> getClassPath() {
+        final Iterable<String> bootClasspath = getClassPath("sun.boot.class.path");
+        final Iterable<String> classpath = getClassPath("java.class.path");
+
+        final Iterable<String> surefireClasspath = getObnoxiousMavenSurefireClasspath(classpath);
+
+        List<String> cp = ImmutableList.copyOf(Iterables.concat(bootClasspath, classpath, surefireClasspath));
+        System.out.printf("New Class Path: %s%n", cp);
+        return cp;
+    }
+
+    private static Iterable<String> getObnoxiousMavenSurefireClasspath(Iterable<String> classpath)
+    {
+        if (Iterables.find(classpath, SUREFIRE_PREDICATE, null) == null) {
+            return ImmutableList.of();
+        }
+
+        // Load the manifest from the booter jar, parse it, add to the classpath...
+        try {
+            final ImmutableList.Builder<String> builder = ImmutableList.builder();
+            for (final Enumeration<URL> resources = LessIOSecurityManager.class.getClassLoader().getResources("META-INF/MANIFEST.MF"); resources.hasMoreElements();) {
+                final Manifest manifest = new Manifest(resources.nextElement().openStream());
+                final Attributes attributes = manifest.getMainAttributes();
+                final String classpathValue = attributes.getValue("Class-Path");
+                if (classpathValue != null) {
+                    // The manifest contains a list of file:/.. URIs separated by spaces...
+                    builder.addAll(Iterables.transform(Splitter.on(' ')
+                        .omitEmptyStrings()
+                        .trimResults()
+                        .split(classpathValue), FILE_FUNCTION));
+                }
+            }
+            return builder.build();
+        } catch (IOException ioe) {
+            throw new CantDoItException("IO Error while reading manifest from booter jar: " + ioe.getMessage());
+        }
+    }
+
+    private static Iterable<String> getClassPath(String name) {
+        String classPathProperty = System.getProperty(name);
+        if (Strings.emptyToNull(classPathProperty) == null) {
+            return ImmutableList.of();
+        }
+        return Splitter.on(PATH_SEPARATOR)
+            .omitEmptyStrings()
+            .trimResults()
+            .split(classPathProperty);
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -408,9 +493,10 @@ public class LessIOSecurityManager extends SecurityManager {
              * suboptimal location to avoid ClassCircularityErrors that can occur when
              * attempting to load an anonymous class.
              */
+
             for (String part : CP_PARTS.get()) {
                 if (file.startsWith(part)) {
-                    // Files in the CLASSPATH are always allowed
+                    // Files in the class path are always allowed
                     return;
                 }
             }
